@@ -2,9 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"net/http/httputil"
+	"os"
 	"strconv"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 )
 
@@ -25,27 +29,43 @@ func (controller AccountController) Start() {
 	router.HandleFunc("/register", controller.RegisterHandler).Methods("POST")
 	router.HandleFunc("/userProfile", controller.UserProfileHandler).Queries("id", "{id}")
 
-	http.Handle("/", router)
+	loggedRouter := handlers.LoggingHandler(os.Stdout, router)
 
-	http.ListenAndServe(":"+strconv.Itoa(controller.Port), nil)
+	http.ListenAndServe(":"+strconv.Itoa(controller.Port), loggedRouter)
+}
+
+type RegisterRequest struct {
+	UserName   string `json:"userName"`
+	InviteCode string `json:"inviteCode",omitempty`
 }
 
 func (controller AccountController) RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	userName := r.FormValue("userName")
 
-	if userName == "" {
-		http.Error(w, "The username should not be void", http.StatusBadRequest)
+	rDump, err := httputil.DumpRequest(r, false)
+
+	if err != nil {
+		log.Println(err)
+	} else {
+		log.Println(string(rDump))
+	}
+
+	decoder := json.NewDecoder(r.Body)
+
+	var registerRequest RegisterRequest
+
+	err = decoder.Decode(&registerRequest)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	inviteCode := r.FormValue("inviteCode")
-
 	var referer *Profile
 
-	if inviteCode != "" {
+	if registerRequest.InviteCode != "" {
 		var found bool
 
-		referer, found = controller.service.GetReferer(inviteCode)
+		referer, found = controller.service.GetReferer(registerRequest.InviteCode)
 
 		if !found {
 			http.Error(w, "The referer code has not been found", http.StatusBadRequest)
@@ -53,7 +73,7 @@ func (controller AccountController) RegisterHandler(w http.ResponseWriter, r *ht
 		}
 	}
 
-	profile := controller.service.AddProfile(userName, referer)
+	profile := controller.service.AddProfile(registerRequest.UserName, referer)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(strconv.Itoa(profile.Id)))
