@@ -1,0 +1,7 @@
+{
+  "task": "viral-growth",
+  "configSource": "env",
+  "stack": {
+    "type": "docker"
+  }
+}
